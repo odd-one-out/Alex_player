@@ -1,8 +1,8 @@
-import os
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QListWidget, QFileDialog, QSlider, QVBoxLayout, QHBoxLayout
-from PyQt6.QtCore import Qt, QUrl, QTimer, QStandardPaths
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QAudio
+from datetime import timedelta
 
 # QWidget (and my class AudioApp) creates the main window where all other widgets work
 
@@ -17,7 +17,6 @@ class AudioApp(QWidget):
         self.setWindowTitle = "Roxy-Drive"
         self.setGeometry(100, 300, 400, 200)
         self.set_gui()
-        self.set_audio()
         self.css_styles()
         self.event_handler()
 
@@ -53,31 +52,42 @@ class AudioApp(QWidget):
         self.speed_slider.setTickInterval(10)
         self.speed_slider_label = QLabel(f'Speed {self.speed_slider.value()}%')
 
-
         #slider for duration
         self.duration_slider = QSlider(Qt.Orientation.Horizontal)
         self.duration_slider.setRange(0,0)
+
+        # timer
+        self.cur_time_label = QLabel('00:00:00')
 
         #volume slider
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setValue(50)
         self.volume_label = QLabel('Volume')
         
-        
-        
+
+        #audio
+        self.audio_output = QAudioOutput()
+        self.audio_output.setVolume(self.real_volume(self.volume_slider.value()))
+        self.media_player = QMediaPlayer()
+        self.media_player.setAudioOutput(self.audio_output)
+
 
         # main layout
         self.main_layout = QVBoxLayout()
         self.main_layout.setObjectName('main-layout')
         self.main_layout.addWidget(self.title)
         
+        # add open button
         row1 = QHBoxLayout()
         row1.addWidget(self.btn_file_opener)
         row1.setAlignment(Qt.AlignmentFlag.AlignLeft)
         self.main_layout.addLayout(row1)
 
+
+        # add playlist, duration_slider, timer
         self.main_layout.addWidget(self.track_list)
         self.main_layout.addWidget(self.duration_slider)
+        self.main_layout.addWidget(self.cur_time_label)
 
         # add buttons
         row = QHBoxLayout()
@@ -102,18 +112,13 @@ class AudioApp(QWidget):
         self.setLayout(self.main_layout)
 
 
-    def set_audio(self):
-        self.audio_output = QAudioOutput()
-        self.audio_output.setVolume(self.real_volume(self.volume_slider.value()))
-        self.media_player = QMediaPlayer()
-        self.media_player.setAudioOutput(self.audio_output)
-
     def css_styles(self):
         self.setStyleSheet("""
-
                         QPushButton{
                         background-color: rgb(45, 97, 100);
                         padding: 10px;
+                        margin-top: 15px;
+                           margin-bottom: 15px;
                         border: 1px solid #26422e;
                         border-radius: 20px;
                         }
@@ -199,7 +204,7 @@ class AudioApp(QWidget):
         self.btn_stop.setEnabled(True)
         self.btn_play.setDisabled(True)
 
-
+        
     def pause(self):
         self.media_player.pause()
 
@@ -231,6 +236,8 @@ class AudioApp(QWidget):
 
     def position_changed(self, position):
         self.duration_slider.setValue(position)
+        track_time = str(timedelta(seconds=round(self.duration_slider.value() / 1000)))
+        self.cur_time_label.setText(track_time)
   
     def duration_changed(self, duration):
         self.duration_slider.setRange(0, duration)
@@ -259,7 +266,7 @@ class AudioApp(QWidget):
 
 
 if __name__ == '__main__':
-    app = QApplication([])
+    app = QApplication([]) # отвечает за все события в приложении
     main = AudioApp()
     main.show()
     app.exec()
