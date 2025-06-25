@@ -1,7 +1,7 @@
 from pathlib import Path
 from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QListWidget, QFileDialog, QSlider, QVBoxLayout, QHBoxLayout
-from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QAudio
+from PyQt6.QtCore import Qt, QUrl, QTimer
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QAudio, QMediaMetaData
 from datetime import timedelta
 
 # QWidget (and my class AudioApp) creates the main window where all other widgets work
@@ -15,7 +15,7 @@ class AudioApp(QWidget):
 
         #settings
         self.setWindowTitle = "Roxy-Drive"
-        self.setGeometry(100, 300, 400, 200)
+        self.setGeometry(100, 300, 500, 200)
         self.set_gui()
         self.css_styles()
         self.event_handler()
@@ -28,13 +28,18 @@ class AudioApp(QWidget):
         self.title.setObjectName('title')
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
-        # tracks window
+        # tracklist
+        self.playlist = []
+
+        # tracklist window
         self.track_list = QListWidget()
 
         # buttons
         self.btn_file_opener = QPushButton('Choose a folder')
         self.btn_file_opener.setObjectName('btn-open')
         self.btn_play = QPushButton('PLAY')
+        self.btn_next = QPushButton('NEXT')
+        self.btn_previous = QPushButton('PREV')
         self.btn_pause = QPushButton('PAUSE')
         self.btn_stop = QPushButton('STOP')
 
@@ -42,6 +47,8 @@ class AudioApp(QWidget):
         self.btn_play.setDisabled(True)
         self.btn_pause.setDisabled(True)
         self.btn_stop.setDisabled(True)
+        self.btn_previous.setDisabled(True)
+        self.btn_next.setDisabled(True)
         
         # slider for speed
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
@@ -59,6 +66,9 @@ class AudioApp(QWidget):
         # timer
         self.cur_time_label = QLabel('00:00:00')
 
+        # meta label
+        self.meta_label = QLabel()
+
         #volume slider
         self.volume_slider = QSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setValue(50)
@@ -75,7 +85,13 @@ class AudioApp(QWidget):
         # main layout
         self.main_layout = QVBoxLayout()
         self.main_layout.setObjectName('main-layout')
-        self.main_layout.addWidget(self.title)
+
+        # add name
+        r = QVBoxLayout()
+        r.setObjectName('brand')
+        r.setContentsMargins(20, 0, 20, 0)
+        r.addWidget(self.title)
+        self.main_layout.addLayout(r)
         
         # add open button
         row1 = QHBoxLayout()
@@ -84,14 +100,17 @@ class AudioApp(QWidget):
         self.main_layout.addLayout(row1)
 
 
-        # add playlist, duration_slider, timer
+        # add playlist, duration_slider, timer, meta
         self.main_layout.addWidget(self.track_list)
         self.main_layout.addWidget(self.duration_slider)
         self.main_layout.addWidget(self.cur_time_label)
+        self.main_layout.addWidget(self.meta_label)
 
         # add buttons
         row = QHBoxLayout()
+        row.addWidget(self.btn_previous)
         row.addWidget(self.btn_play)
+        row.addWidget(self.btn_next)
         row.addWidget(self.btn_pause)
         row.addWidget(self.btn_stop)
         self.main_layout.addLayout(row)
@@ -114,11 +133,12 @@ class AudioApp(QWidget):
 
     def css_styles(self):
         self.setStyleSheet("""
-                        QPushButton{
+                           
+                        QPushButton {
                         background-color: rgb(45, 97, 100);
                         padding: 10px;
                         margin-top: 15px;
-                           margin-bottom: 15px;
+                        margin-bottom: 15px;
                         border: 1px solid #26422e;
                         border-radius: 20px;
                         }
@@ -127,19 +147,20 @@ class AudioApp(QWidget):
                         background-color: rgb(33, 72, 74);
                         }
                            
-                        QListWidget{
+                        QListWidget {
                         background-color: #161716;
                         border: 2px solid #272928;
                         }
 
-                        #title{
-                        color: #d5e1df;
-                        font-size: 20px;
+                        #title {
+                        color: #fff2df;
+                        font-size: 30px;
+                        font-style: italic;
                         padding-top: 0;
-                        padding-bottom: 10px;
+                        padding-bottom: 0;
                         }
                            
-                        #btn-open{
+                        #btn-open {
                         padding: 5px;
                         border-radius: 10px;
                            }
@@ -153,6 +174,8 @@ class AudioApp(QWidget):
 
         self.btn_play.clicked.connect(self.play)
         self.btn_pause.clicked.connect(self.pause)
+        self.btn_previous.clicked.connect(self.previous_song)
+        self.btn_next.clicked.connect(self.next_song)
         self.btn_stop.clicked.connect(self.stop)
 
         self.media_player.positionChanged.connect(self.position_changed)
@@ -161,7 +184,12 @@ class AudioApp(QWidget):
 
         self.speed_slider.valueChanged.connect(self.update_speed)
         self.speed_slider.sliderMoved.connect(self.update_speed)
+        
         self.volume_slider.valueChanged.connect(self.set_volume)
+
+        self.media_player.metaDataChanged.connect(self.meta_set)
+
+        self.media_player.mediaStatusChanged.connect(self.song_ended)
         
     def open_folder(self):
 
@@ -170,7 +198,8 @@ class AudioApp(QWidget):
             for f in Path(path).iterdir():
                 print(f)
                 if f.match('*.mp3') or f.match('*.wave'):
-                     self.track_list.addItem(str(f))
+                     self.playlist.append(str(f))
+                     self.track_list.addItem(str(f.name))
         print(self.track_list)
         
 
@@ -190,38 +219,81 @@ class AudioApp(QWidget):
         #     self.media_player.setSource(QUrl.fromLocalFile(file))
         #     self.btn_play.setEnabled(True)
 
-    def choose_track(self, i):
-        self.media_player.setSource(QUrl.fromLocalFile(i.text()))
+    def choose_track(self):
+        id = self.track_list.currentRow()
+        print(f'current id is {id}')
+        self.media_player.setSource(QUrl.fromLocalFile(self.playlist[id]))
         self.btn_play.setEnabled(True)
-        #self.play()
+        self.btn_previous.setEnabled(True)
+        self.btn_next.setEnabled(True)
+
+        #metadata
+        self.meta_set()
+
+
+
 
 
     def play(self):
         self.media_player.setPlaybackRate(self.speed_slider.value()*.01)
         self.media_player.play()
+        print(f'duration on play is {self.media_player.duration()}')
 
         self.btn_pause.setEnabled(True)
         self.btn_stop.setEnabled(True)
         self.btn_play.setDisabled(True)
 
+
+    def meta_set(self):
+        meta = self.media_player.metaData()
+        title = meta.value(QMediaMetaData.Key.Title)
+        author = meta.value(QMediaMetaData.Key.Author)
+        print(title, author)
+        self.meta_label.setText(f'song: {title}\nartist: {author}')
+            
         
     def pause(self):
         self.media_player.pause()
-
+        self.btn_play.setDisabled(False)
         self.btn_pause.setDisabled(True)
-        self.btn_play.setEnabled(True)
         
 
     def stop(self):
         if self.media_player.isPlaying():
             self.media_player.stop()
-
+        dur = self.media_player.duration()
+        print(f'duration on stop - {dur}')
         self.media_player.setPosition(0)
         self.media_player.setPlaybackRate(self.speed_slider.value()*.01)
 
         self.btn_pause.setDisabled(True)
         self.btn_stop.setDisabled(True)
         self.btn_play.setEnabled(True)
+
+    def previous_song(self):
+        current_id = self.track_list.currentRow()
+        if current_id == 0:
+            prev_id = self.track_list.count() - 1
+        else:
+            prev_id = current_id - 1
+        self.media_player.setSource(QUrl.fromLocalFile(self.playlist[prev_id]))
+        self.track_list.setCurrentRow(prev_id)
+        self.play()
+
+    def next_song(self):
+        current_id = self.track_list.currentRow()
+        count = self.track_list.count()
+        if current_id == count-1:
+            next_id = 0
+        else:
+            next_id =  current_id + 1
+        self.media_player.setSource(QUrl.fromLocalFile(self.playlist[next_id]))
+        self.track_list.setCurrentRow(next_id)
+        self.play()
+
+    def song_ended(self, status):
+        if status == self.media_player.MediaStatus.EndOfMedia:
+            self.next_song()
 
 
     def update_speed(self, position):
