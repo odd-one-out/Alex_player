@@ -1,11 +1,29 @@
 from pathlib import Path
-from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QListWidget, QFileDialog, QSlider, QVBoxLayout, QHBoxLayout
-from PyQt6.QtCore import Qt, QUrl, QTimer
+from os.path import basename
+from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QListWidget, QFileDialog, QSlider, QVBoxLayout, QHBoxLayout, QStyleFactory
+from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QAudio, QMediaMetaData
 from datetime import timedelta
 
 # QWidget (and my class AudioApp) creates the main window where all other widgets work
 
+
+# custom slider
+class MouseSlider(QSlider):
+    #sliderClicked = pyqtSignal(int)
+
+    def mousePressEvent(self, event):
+        #super().mousePressEvent(event)
+
+        if event.button() == Qt.MouseButton.LeftButton:
+            event.accept()
+            x = event.pos().x()
+            value = (self.maximum() - self.minimum()) * x / self.width() + self.minimum()
+            #self.sliderClicked.emit(value)
+            self.setValue(int(value))
+            super().mousePressEvent(event)
+        else:
+            super().mousePressEvent(event)
 
 # Main app class
 class AudioApp(QWidget):
@@ -35,8 +53,10 @@ class AudioApp(QWidget):
         self.track_list = QListWidget()
 
         # buttons
-        self.btn_file_opener = QPushButton('Choose a folder')
-        self.btn_file_opener.setObjectName('btn-open')
+        self.btn_folder_opener = QPushButton('Select folder')
+        self.btn_folder_opener.setObjectName('btn-open')
+        self.btn_track_opener = QPushButton('Select track')
+        self.btn_track_opener.setObjectName('btn-open')
         self.btn_play = QPushButton('PLAY')
         self.btn_next = QPushButton('NEXT')
         self.btn_previous = QPushButton('PREV')
@@ -70,7 +90,7 @@ class AudioApp(QWidget):
         self.meta_label = QLabel()
 
         #volume slider
-        self.volume_slider = QSlider(Qt.Orientation.Horizontal)
+        self.volume_slider = MouseSlider(Qt.Orientation.Horizontal)
         self.volume_slider.setValue(50)
         self.volume_label = QLabel('Volume')
         
@@ -88,15 +108,14 @@ class AudioApp(QWidget):
 
         # add name
         r = QVBoxLayout()
-        r.setObjectName('brand')
         r.setContentsMargins(20, 0, 20, 0)
         r.addWidget(self.title)
         self.main_layout.addLayout(r)
         
-        # add open button
+        # add open buttons
         row1 = QHBoxLayout()
-        row1.addWidget(self.btn_file_opener)
-        row1.setAlignment(Qt.AlignmentFlag.AlignLeft)
+        row1.addWidget(self.btn_folder_opener, alignment=Qt.AlignmentFlag.AlignLeft)
+        row1.addWidget(self.btn_track_opener, alignment=Qt.AlignmentFlag.AlignRight)
         self.main_layout.addLayout(row1)
 
 
@@ -117,6 +136,7 @@ class AudioApp(QWidget):
 
         # add speed slider
         row2 = QHBoxLayout()
+        row2.setContentsMargins(0, 20, 0, 20)
         row2.addWidget(self.speed_slider_label)
         row2.addWidget(self.speed_slider)
         self.main_layout.addLayout(row2)
@@ -132,43 +152,20 @@ class AudioApp(QWidget):
 
 
     def css_styles(self):
-        self.setStyleSheet("""
-                           
-                        QPushButton {
-                        background-color: rgb(45, 97, 100);
-                        padding: 10px;
-                        margin-top: 15px;
-                        margin-bottom: 15px;
-                        border: 1px solid #26422e;
-                        border-radius: 20px;
-                        }
-                        
-                        QPushButton:hover {
-                        background-color: rgb(33, 72, 74);
-                        }
-                           
-                        QListWidget {
-                        background-color: #161716;
-                        border: 2px solid #272928;
-                        }
+        try:
+            with open('app_styles.qss') as f:
+                styles = f.read()
+                self.setStyleSheet(styles)
+        except (FileExistsError, FileNotFoundError, PermissionError) as e:
+            print(str(e))
+        except Exception as ex:
+            print('some mistake occured')
 
-                        #title {
-                        color: #fff2df;
-                        font-size: 30px;
-                        font-style: italic;
-                        padding-top: 0;
-                        padding-bottom: 0;
-                        }
-                           
-                        #btn-open {
-                        padding: 5px;
-                        border-radius: 10px;
-                           }
-                        """)
-
+    
     # event handler
     def event_handler(self):
-        self.btn_file_opener.clicked.connect(self.open_folder)
+        self.btn_folder_opener.clicked.connect(self.open_folder)
+        self.btn_track_opener.clicked.connect(self.open_track)
 
         self.track_list.itemClicked.connect(self.choose_track)
 
@@ -186,6 +183,7 @@ class AudioApp(QWidget):
         self.speed_slider.sliderMoved.connect(self.update_speed)
         
         self.volume_slider.valueChanged.connect(self.set_volume)
+        self.volume_slider.sliderMoved.connect(self.set_volume)
 
         self.media_player.metaDataChanged.connect(self.meta_set)
 
@@ -195,13 +193,15 @@ class AudioApp(QWidget):
 
         path = QFileDialog().getExistingDirectory(self, 'Select folder')
         if path:
+            self.playlist.clear()
+            self.track_list.clear()
             for f in Path(path).iterdir():
                 print(f)
                 if f.match('*.mp3') or f.match('*.wave'):
                      self.playlist.append(str(f))
                      self.track_list.addItem(str(f.name))
         print(self.track_list)
-        
+
 
         # music_folder = QStandardPaths.standardLocations(QStandardPaths.StandardLocation.MusicLocation)
         # print(music_folder[0])
@@ -209,15 +209,17 @@ class AudioApp(QWidget):
         # urls = file_dialog.selectedUrls()
         # print(urls)
         #file_dialog.setOptions(QFileDialog.Option.DontUseNativeDialog) - if the window doesn't open or other problems with it
-        
-        # else:
 
-        # file, _ = QFileDialog.getOpenFileName(self, 'Select track', filter='Audio Files (*.mp3)')
-        # if file:
-        #     self.file_list.clear()
-        #     self.file_list.addItem(os.path.basename(file))
-        #     self.media_player.setSource(QUrl.fromLocalFile(file))
-        #     self.btn_play.setEnabled(True)
+    def open_track(self):
+        file, _ = QFileDialog.getOpenFileName(self, 'Select track', filter='Audio Files (*.mp3)')
+        if file:
+            self.playlist.clear()
+            self.track_list.clear()
+            self.playlist.append(file)
+            self.track_list.addItem(basename(file))
+            self.media_player.setSource(QUrl.fromLocalFile(file))
+            self.btn_play.setEnabled(True)
+        
 
     def choose_track(self):
         id = self.track_list.currentRow()
@@ -229,9 +231,6 @@ class AudioApp(QWidget):
 
         #metadata
         self.meta_set()
-
-
-
 
 
     def play(self):
@@ -326,20 +325,14 @@ class AudioApp(QWidget):
         
 
 
-        
-
-
-
-
-
-
-
-
 
 
 if __name__ == '__main__':
     app = QApplication([]) # отвечает за все события в приложении
+    print(app.style().objectName()) #узнать какой сейчас стиль  - fusion
+    print(QStyleFactory.keys()) # узнать все возможные для меня стили ('windows', 'Fusion')
     main = AudioApp()
     main.show()
     app.exec()
+
 
