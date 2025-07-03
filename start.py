@@ -1,9 +1,12 @@
 from pathlib import Path
 from os.path import basename
-from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QListWidget, QFileDialog, QSlider, QVBoxLayout, QHBoxLayout, QStyleFactory
+from datetime import timedelta
+
+import qtawesome as qta
+
+from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QListWidget, QFileDialog, QSlider, QVBoxLayout, QHBoxLayout, QStyleFactory, QStyle
 from PyQt6.QtCore import Qt, QUrl
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QAudio, QMediaMetaData
-from datetime import timedelta
 
 # QWidget (and my class AudioApp) creates the main window where all other widgets work
 
@@ -13,17 +16,18 @@ class MouseSlider(QSlider):
     #sliderClicked = pyqtSignal(int)
 
     def mousePressEvent(self, event):
-        #super().mousePressEvent(event)
 
         if event.button() == Qt.MouseButton.LeftButton:
-            event.accept()
-            x = event.pos().x()
-            value = (self.maximum() - self.minimum()) * x / self.width() + self.minimum()
+            value = QStyle.sliderValueFromPosition(
+                    self.minimum(), self.maximum(), event.pos().x(), self.width()
+                )
+            # event.accept()
+            # x = event.pos().x()
+            # value = (self.maximum() - self.minimum()) * x / self.width() + self.minimum()
             #self.sliderClicked.emit(value)
-            self.setValue(int(value))
-            super().mousePressEvent(event)
-        else:
-            super().mousePressEvent(event)
+            self.setValue(value)
+        super().mousePressEvent(event)
+
 
 # Main app class
 class AudioApp(QWidget):
@@ -57,11 +61,21 @@ class AudioApp(QWidget):
         self.btn_folder_opener.setObjectName('btn-open')
         self.btn_track_opener = QPushButton('Select track')
         self.btn_track_opener.setObjectName('btn-open')
-        self.btn_play = QPushButton('PLAY')
-        self.btn_next = QPushButton('NEXT')
-        self.btn_previous = QPushButton('PREV')
-        self.btn_pause = QPushButton('PAUSE')
-        self.btn_stop = QPushButton('STOP')
+
+        play_icon = qta.icon('mdi.play', scale_factor=2.0)
+        self.btn_play = QPushButton(play_icon, '')
+
+        next_icon = qta.icon('mdi.fast-forward', scale_factor=1.5)
+        self.btn_next = QPushButton(next_icon, '')
+
+        prev_icon = qta.icon('mdi.rewind', scale_factor=1.5)
+        self.btn_previous = QPushButton(prev_icon, '')
+
+        pause_icon = qta.icon('mdi.pause', scale_factor=2.0)
+        self.btn_pause = QPushButton(pause_icon, '')
+
+        stop_icon = qta.icon('mdi.stop', scale_factor=2.0)
+        self.btn_stop = QPushButton(stop_icon, '')
 
         # deactivate btns at first
         self.btn_play.setDisabled(True)
@@ -78,6 +92,11 @@ class AudioApp(QWidget):
         self.speed_slider.setTickPosition(QSlider.TickPosition.TicksAbove)
         self.speed_slider.setTickInterval(10)
         self.speed_slider_label = QLabel(f'Speed {self.speed_slider.value()}%')
+
+        # return slider to default
+        default_speed_icon = qta.icon('mdi6.backup-restore', scale_factor=1.5)
+        self.btn_default_speed = QPushButton(default_speed_icon, '')
+        self.btn_default_speed.setObjectName('default-speed')
 
         #slider for duration
         self.duration_slider = QSlider(Qt.Orientation.Horizontal)
@@ -139,6 +158,7 @@ class AudioApp(QWidget):
         row2.setContentsMargins(0, 20, 0, 20)
         row2.addWidget(self.speed_slider_label)
         row2.addWidget(self.speed_slider)
+        row2.addWidget(self.btn_default_speed)
         self.main_layout.addLayout(row2)
 
         # add volume slider
@@ -181,6 +201,7 @@ class AudioApp(QWidget):
 
         self.speed_slider.valueChanged.connect(self.update_speed)
         self.speed_slider.sliderMoved.connect(self.update_speed)
+        self.btn_default_speed.clicked.connect(self.speed_to_default)
         
         self.volume_slider.valueChanged.connect(self.set_volume)
         self.volume_slider.sliderMoved.connect(self.set_volume)
@@ -301,6 +322,8 @@ class AudioApp(QWidget):
         self.media_player.setPlaybackRate(self.speed_slider.value()*.01)
         self.speed_slider_label.setText(f'Speed {self.speed_slider.value()}%')
 
+    def speed_to_default(self):
+        self.speed_slider.setSliderPosition(100)
   
     def update_position(self, position):
         self.media_player.setPosition(position)

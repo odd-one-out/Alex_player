@@ -10,11 +10,11 @@ QLabel#title {
 
 QPushButton {
     background-color: qlineargradient(x1: 0, y1: 0, x2: 0, y2: 1, stop: 0 #126e52, stop: 1 #7d057f);
-    padding: 10px;
+    padding: 10px 5px;
     margin-top: 15px;
     margin-bottom: 15px;
     border: 1px solid #26422e;
-    border-radius: 20px;
+    border-radius: 10px;
 }
 
 QPushButton:disabled {
@@ -43,6 +43,11 @@ QListWidget::item:selected {
     margin-right: 15px;
 }
 
+#default-speed {
+    border-radius: 5px;
+    padding: 5px 8px;
+}
+
 
 QSlider{
     margin-top: 10px;
@@ -51,15 +56,15 @@ QSlider{
 
 QSlider::groove:horizontal {
     border: 1px solid  #7d057f;
-    height: 4px;
+    height: 2px;
 }
 
 QSlider::handle:horizontal {
     background-color:rgb(204, 206, 205);
-    width: 20px;
-    height: 20px;
+    width: 18px;
+    height: 18px;
     margin: -8px 0px;
-    border-radius: 10px;
+    border-radius: 9px;
 }
 
 QSlider::handle:horizontal:hover {
