@@ -211,16 +211,16 @@ class AudioApp(QWidget):
         self.media_player.mediaStatusChanged.connect(self.song_ended)
         
     def open_folder(self):
-
+        suffixies = ('.mp3', '.wave', '.wav', '.m4a', '.aac', '.flac')
         path = QFileDialog().getExistingDirectory(self, 'Select folder')
         if path:
             self.playlist.clear()
             self.track_list.clear()
             for f in Path(path).iterdir():
                 print(f)
-                if f.match('*.mp3') or f.match('*.wave'):
-                     self.playlist.append(str(f))
-                     self.track_list.addItem(str(f.name))
+                if f.suffix in suffixies:
+                    self.playlist.append(str(f))
+                    self.track_list.addItem(str(f.name))
         print(self.track_list)
 
 
@@ -232,7 +232,8 @@ class AudioApp(QWidget):
         #file_dialog.setOptions(QFileDialog.Option.DontUseNativeDialog) - if the window doesn't open or other problems with it
 
     def open_track(self):
-        file, _ = QFileDialog.getOpenFileName(self, 'Select track', filter='Audio Files (*.mp3)')
+        audioFormats = "*.mp3 *.wav *.wave *.aac *.m4a *.flac"
+        file, _ = QFileDialog.getOpenFileName(self, 'Select track', filter='Audio Files ({audioFormats})')
         if file:
             self.playlist.clear()
             self.track_list.clear()
@@ -252,6 +253,8 @@ class AudioApp(QWidget):
 
         #metadata
         self.meta_set()
+
+        self.play()
 
 
     def play(self):
