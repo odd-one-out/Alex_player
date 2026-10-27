@@ -1,3 +1,13 @@
+
+AudioApp {
+    background-color: #282828;
+    border:3px solid black;
+}
+
+QLabel, QListWidget {
+    color: white;
+}
+
 QLabel#title {
     color:rgb(159, 7, 161);
     border-radius: 10px;
@@ -40,7 +50,6 @@ QListWidget::item:selected {
     color: rgb(231, 231, 231);
     padding: 5px 10px;
     border-radius: 10px;
-    margin-right: 15px;
 }
 
 #default-speed {

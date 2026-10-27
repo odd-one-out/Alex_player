@@ -2,29 +2,41 @@ from pathlib import Path
 from os.path import basename
 from datetime import timedelta
 
+from PyQt6.QtWidgets import (
+    QApplication,
+    QWidget,
+    QPushButton,
+    QLabel,
+    QListWidget,
+    QFileDialog,
+    QSlider,
+    QVBoxLayout,
+    QHBoxLayout,
+    QStyle,
+    QMessageBox
+)
+from PyQt6.QtCore import Qt, QUrl, QSize
+from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QAudio, QMediaMetaData
+from PyQt6.QtGui import QColor
+
 import qtawesome as qta
 
-from PyQt6.QtWidgets import QApplication, QWidget, QPushButton, QLabel, QListWidget, QFileDialog, QSlider, QVBoxLayout, QHBoxLayout, QStyleFactory, QStyle
-from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QAudio, QMediaMetaData
+import shelve
+file = 'favourite_hits'
+
+from player_logger import logger, logger_decor
+
 
 # QWidget (and my class AudioApp) creates the main window where all other widgets work
 
-
 # custom slider
 class MouseSlider(QSlider):
-    #sliderClicked = pyqtSignal(int)
 
     def mousePressEvent(self, event):
-
         if event.button() == Qt.MouseButton.LeftButton:
             value = QStyle.sliderValueFromPosition(
                     self.minimum(), self.maximum(), event.pos().x(), self.width()
                 )
-            # event.accept()
-            # x = event.pos().x()
-            # value = (self.maximum() - self.minimum()) * x / self.width() + self.minimum()
-            #self.sliderClicked.emit(value)
             self.setValue(value)
         super().mousePressEvent(event)
 
@@ -36,17 +48,18 @@ class AudioApp(QWidget):
         super().__init__()
 
         #settings
-        self.setWindowTitle = "Roxy-Drive"
+        self.setWindowTitle("Rock music player")
         self.setGeometry(100, 300, 500, 200)
         self.set_gui()
         self.css_styles()
         self.event_handler()
 
-        # elements
+    # elements
+    @logger_decor
     def set_gui(self):
 
         # title
-        self.title = QLabel('Roxy audio player')
+        self.title = QLabel('Alex audio player')
         self.title.setObjectName('title')
         self.title.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
@@ -61,7 +74,20 @@ class AudioApp(QWidget):
         self.btn_folder_opener.setObjectName('btn-open')
         self.btn_track_opener = QPushButton('Select track')
         self.btn_track_opener.setObjectName('btn-open')
+        self.btn_favs = QPushButton('Favourites')
+        self.btn_favs.setObjectName('btn-open')
 
+        # buttons for favourite tracks
+        favs_add = qta.icon('mdi6.heart-plus', color=QColor(185, 78, 187), color_active='purple')
+        self.btn_add_to_favs = QPushButton(favs_add, '')
+        self.btn_add_to_favs.setIconSize(QSize(25, 25))
+        self.btn_add_to_favs.setObjectName('icon-btns')
+        favs_remove = qta.icon('mdi6.heart-remove', color=QColor(185, 78, 187), color_active='purple')
+        self.btn_remove_from_favs = QPushButton(favs_remove, '')
+        self.btn_remove_from_favs.setIconSize(QSize(25, 25))
+        self.btn_remove_from_favs.setObjectName('icon-btns')
+
+        # player buttons
         play_icon = qta.icon('mdi.play', scale_factor=2.0)
         self.btn_play = QPushButton(play_icon, '')
 
@@ -83,6 +109,8 @@ class AudioApp(QWidget):
         self.btn_stop.setDisabled(True)
         self.btn_previous.setDisabled(True)
         self.btn_next.setDisabled(True)
+        self.btn_add_to_favs.setDisabled(True)
+        self.btn_remove_from_favs.setDisabled(True)
         
         # slider for speed
         self.speed_slider = QSlider(Qt.Orientation.Horizontal)
@@ -131,15 +159,25 @@ class AudioApp(QWidget):
         r.addWidget(self.title)
         self.main_layout.addLayout(r)
         
-        # add open buttons
+        # add buttons for opening a folder or a track
         row1 = QHBoxLayout()
         row1.addWidget(self.btn_folder_opener, alignment=Qt.AlignmentFlag.AlignLeft)
-        row1.addWidget(self.btn_track_opener, alignment=Qt.AlignmentFlag.AlignRight)
+        row1.addWidget(self.btn_track_opener, alignment=Qt.AlignmentFlag.AlignLeft)
+        row1.addWidget(self.btn_favs, alignment=Qt.AlignmentFlag.AlignRight)
         self.main_layout.addLayout(row1)
 
 
-        # add playlist, duration_slider, timer, meta
+        # add playlist
         self.main_layout.addWidget(self.track_list)
+
+        # add fav_buttons
+        favs_row = QHBoxLayout()
+        favs_row.setAlignment(Qt.AlignmentFlag.AlignRight)
+        favs_row.addWidget(self.btn_add_to_favs, alignment=Qt.AlignmentFlag.AlignRight)
+        favs_row.addWidget(self.btn_remove_from_favs, alignment=Qt.AlignmentFlag.AlignRight)
+        self.main_layout.addLayout(favs_row)
+
+        # add duration_slider, timer, meta       
         self.main_layout.addWidget(self.duration_slider)
         self.main_layout.addWidget(self.cur_time_label)
         self.main_layout.addWidget(self.meta_label)
@@ -177,15 +215,20 @@ class AudioApp(QWidget):
                 styles = f.read()
                 self.setStyleSheet(styles)
         except (FileExistsError, FileNotFoundError, PermissionError) as e:
-            print(str(e))
+            QMessageBox.warning(self, 'no styles', 'sorry, unable to style your player')
+            logger.exception('css not found or no permission: %s', e)
         except Exception as ex:
-            print('some mistake occured')
+            QMessageBox.warning(self, 'no styles', 'sorry, unable to style your player')
+            logger.exception('impossible to load css - %s', ex)
 
     
     # event handler
     def event_handler(self):
         self.btn_folder_opener.clicked.connect(self.open_folder)
         self.btn_track_opener.clicked.connect(self.open_track)
+        self.btn_favs.clicked.connect(self.load_favs)
+        self.btn_add_to_favs.clicked.connect(self.add_fav)
+        self.btn_remove_from_favs.clicked.connect(self.remove_fav)
 
         self.track_list.itemClicked.connect(self.choose_track)
 
@@ -212,28 +255,28 @@ class AudioApp(QWidget):
         
     def open_folder(self):
         suffixies = ('.mp3', '.wave', '.wav', '.m4a', '.aac', '.flac')
-        path = QFileDialog().getExistingDirectory(self, 'Select folder')
-        if path:
-            self.playlist.clear()
-            self.track_list.clear()
-            for f in Path(path).iterdir():
-                print(f)
-                if f.suffix in suffixies:
-                    self.playlist.append(str(f))
-                    self.track_list.addItem(str(f.name))
-        print(self.track_list)
+        try:
+            path = QFileDialog().getExistingDirectory(self, 'Select folder')
+            if path:
+                self.playlist.clear()
+                self.track_list.clear()
+                for f in Path(path).iterdir():
+                    logger.info('itering file - %s', f)
+                    if f.suffix in suffixies:
+                        self.playlist.append(str(f))
+                        self.track_list.addItem(f.name)
+            logger.info('track list loaded - %s', self.track_list)
+            if len(self.track_list) == 0:
+                QMessageBox.warning(self, 'no music!', 'no music found in this folder, try another one')
+                logger.info('folder has no music files, track list is empty - %s', self.track_list)
 
-
-        # music_folder = QStandardPaths.standardLocations(QStandardPaths.StandardLocation.MusicLocation)
-        # print(music_folder[0])
-        # file_dialog.setDirectory(music_folder[0])
-        # urls = file_dialog.selectedUrls()
-        # print(urls)
-        #file_dialog.setOptions(QFileDialog.Option.DontUseNativeDialog) - if the window doesn't open or other problems with it
+        except (FileNotFoundError, FileExistsError) as e:
+            QMessageBox.warning(self, 'error', 'unable to open folder')
+            logger.exception('unable to open folder', exc_info=True)
 
     def open_track(self):
         audioFormats = "*.mp3 *.wav *.wave *.aac *.m4a *.flac"
-        file, _ = QFileDialog.getOpenFileName(self, 'Select track', filter='Audio Files ({audioFormats})')
+        file, _ = QFileDialog.getOpenFileName(self, 'Select track', filter=f'Audio Files ({audioFormats})')
         if file:
             self.playlist.clear()
             self.track_list.clear()
@@ -241,11 +284,25 @@ class AudioApp(QWidget):
             self.track_list.addItem(basename(file))
             self.media_player.setSource(QUrl.fromLocalFile(file))
             self.btn_play.setEnabled(True)
-        
+
+    def load_favs(self):
+        self.playlist.clear()
+        self.track_list.clear()
+
+        try:
+            with shelve.open(file) as f:
+                for k, v in f.items():
+                    self.playlist.append(v)
+                    self.track_list.addItem(k)
+            logger.info('got from shelve, track list - %s', self.track_list)
+
+        except (FileNotFoundError, FileExistsError) as e:
+            QMessageBox.warning(self, 'sorry', 'unable to open favourite_hits')
+            logger.exception('shelve data not found', exc_info=True)
 
     def choose_track(self):
         id = self.track_list.currentRow()
-        print(f'current id is {id}')
+        logger.info('current id is %s', id)
         self.media_player.setSource(QUrl.fromLocalFile(self.playlist[id]))
         self.btn_play.setEnabled(True)
         self.btn_previous.setEnabled(True)
@@ -255,37 +312,35 @@ class AudioApp(QWidget):
         self.meta_set()
 
         self.play()
-
+        self.btn_add_to_favs.setDisabled(False)
+        self.btn_remove_from_favs.setDisabled(False)
 
     def play(self):
         self.media_player.setPlaybackRate(self.speed_slider.value()*.01)
         self.media_player.play()
-        print(f'duration on play is {self.media_player.duration()}')
+        logger.info(f'duration on play is {self.media_player.duration()}')
 
         self.btn_pause.setEnabled(True)
         self.btn_stop.setEnabled(True)
         self.btn_play.setDisabled(True)
 
-
     def meta_set(self):
         meta = self.media_player.metaData()
         title = meta.value(QMediaMetaData.Key.Title)
-        author = meta.value(QMediaMetaData.Key.Author)
-        print(title, author)
+        author = meta.value(QMediaMetaData.Key.AlbumArtist)
+        logger.info('got title - %s, artist - %s', title, author)
         self.meta_label.setText(f'song: {title}\nartist: {author}')
             
-        
     def pause(self):
         self.media_player.pause()
         self.btn_play.setDisabled(False)
         self.btn_pause.setDisabled(True)
         
-
     def stop(self):
         if self.media_player.isPlaying():
             self.media_player.stop()
         dur = self.media_player.duration()
-        print(f'duration on stop - {dur}')
+        logger.info(f'duration on stop - {dur}')
         self.media_player.setPosition(0)
         self.media_player.setPlaybackRate(self.speed_slider.value()*.01)
 
@@ -318,10 +373,9 @@ class AudioApp(QWidget):
         if status == self.media_player.MediaStatus.EndOfMedia:
             self.next_song()
 
-
     def update_speed(self, position):
         self.speed_slider.setValue(position)
-        print(position)
+        logger.info('speed slider position - %s', position)
         self.media_player.setPlaybackRate(self.speed_slider.value()*.01)
         self.speed_slider_label.setText(f'Speed {self.speed_slider.value()}%')
 
@@ -348,17 +402,46 @@ class AudioApp(QWidget):
 
     def set_volume(self, volume):
         self.audio_output.setVolume(self.real_volume(volume))
-        
 
+    def add_fav(self):
+        if self.track_list.currentItem():
+            name = self.track_list.currentItem().text()
+            id = self.track_list.currentRow()
+            path = self.playlist[id]
+            with shelve.open(file) as f:
+                f[name] = path
+                QMessageBox.information(self, 'yeah!', 'track added to "Favourites"')
+                logger.info('track added to shelve - %s, path - %s', name, path)
+        else:
+            QMessageBox.warning(self, 'wtf?', 'please, choose a track you want to add to "Favourites"')
+            logger.warning('user hasn\'t chosen a track to add to favs')
+            
+    def remove_fav(self):
+        if self.track_list.currentItem():
+            name = self.track_list.currentItem().text()
+            with shelve.open(file) as f:
+                if f.get(name):
+                    del f[name]
+                    QMessageBox.information(self, 'got it!', 'track removed from "Favourites"')
+                    logger.info('track removed from shelve - %s', name)
+                else:
+                    QMessageBox.warning(self, 'track can\'t be removed', 'this track is missing in "Favourites"')
+                    logger.warning('user trying to delete track that is missing in favs')
 
+        else:
+            QMessageBox.warning(self, 'wtf?', 'please, choose a track you want to remove from "Favourites"')
+            logger.warning('user hasn\'t chosen a track to remove from favs')
 
 
 if __name__ == '__main__':
-    app = QApplication([]) # отвечает за все события в приложении
-    print(app.style().objectName()) #узнать какой сейчас стиль  - fusion
-    print(QStyleFactory.keys()) # узнать все возможные для меня стили ('windows', 'Fusion')
-    main = AudioApp()
-    main.show()
-    app.exec()
+    try:
+        app = QApplication([]) # отвечает за все события в приложении
+        #print(app.style().objectName()) #узнать какой сейчас стиль  - fusion
+        #print(QStyleFactory.keys()) # узнать все возможные для меня стили ('windows', 'Fusion')
+        main = AudioApp()
+        main.show()
+        app.exec()
+    except Exception:
+        logger.exception('some strange error')
 
 
