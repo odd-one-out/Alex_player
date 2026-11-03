@@ -21,7 +21,7 @@ def logger_decor(f):
     @wraps(f)
     def wrap(*args, **kwargs):
         f(*args,**kwargs)
-        logger.info('func: %s with args: %s worked successfully', f.__name__, args)
+        logger.info('func: %s with args: %s worked successfully', f.__name__, args, exc_info=True)
     return wrap
 
 

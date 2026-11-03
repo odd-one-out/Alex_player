@@ -29,7 +29,7 @@ from player_logger import logger, logger_decor
 
 # QWidget (and my class AudioApp) creates the main window where all other widgets work
 
-# custom slider
+# custom slider used for volume slider
 class MouseSlider(QSlider):
 
     def mousePressEvent(self, event):
@@ -48,7 +48,7 @@ class AudioApp(QWidget):
         super().__init__()
 
         #settings
-        self.setWindowTitle("Rock music player")
+        self.setWindowTitle("Alex audio player")
         self.setGeometry(100, 300, 500, 200)
         self.set_gui()
         self.css_styles()
@@ -81,11 +81,9 @@ class AudioApp(QWidget):
         favs_add = qta.icon('mdi6.heart-plus', color=QColor(185, 78, 187), color_active='purple')
         self.btn_add_to_favs = QPushButton(favs_add, '')
         self.btn_add_to_favs.setIconSize(QSize(25, 25))
-        self.btn_add_to_favs.setObjectName('icon-btns')
         favs_remove = qta.icon('mdi6.heart-remove', color=QColor(185, 78, 187), color_active='purple')
         self.btn_remove_from_favs = QPushButton(favs_remove, '')
         self.btn_remove_from_favs.setIconSize(QSize(25, 25))
-        self.btn_remove_from_favs.setObjectName('icon-btns')
 
         # player buttons
         play_icon = qta.icon('mdi.play', scale_factor=2.0)
@@ -117,8 +115,6 @@ class AudioApp(QWidget):
         self.speed_slider.setMinimum(50)
         self.speed_slider.setMaximum(150)
         self.speed_slider.setValue(100)
-        self.speed_slider.setTickPosition(QSlider.TickPosition.TicksAbove)
-        self.speed_slider.setTickInterval(10)
         self.speed_slider_label = QLabel(f'Speed {self.speed_slider.value()}%')
 
         # return slider to default
@@ -151,9 +147,8 @@ class AudioApp(QWidget):
 
         # main layout
         self.main_layout = QVBoxLayout()
-        self.main_layout.setObjectName('main-layout')
 
-        # add name
+        # add title
         r = QVBoxLayout()
         r.setContentsMargins(20, 0, 20, 0)
         r.addWidget(self.title)
@@ -252,23 +247,31 @@ class AudioApp(QWidget):
         self.media_player.metaDataChanged.connect(self.meta_set)
 
         self.media_player.mediaStatusChanged.connect(self.song_ended)
-        
-    def open_folder(self):
+
+
+    def iter_folder(self, path):
         suffixies = ('.mp3', '.wave', '.wav', '.m4a', '.aac', '.flac')
+        for f in Path(path).iterdir():
+            if f.is_dir():
+                logger.info('itering folder - %s', f)
+                self.iter_folder(f)
+            else:
+                logger.info('itering file - %s', f)
+                if f.suffix in suffixies:
+                    self.playlist.append(str(f))
+                    self.track_list.addItem(f.name)
+    
+    def open_folder(self):
         try:
             path = QFileDialog().getExistingDirectory(self, 'Select folder')
             if path:
                 self.playlist.clear()
                 self.track_list.clear()
-                for f in Path(path).iterdir():
-                    logger.info('itering file - %s', f)
-                    if f.suffix in suffixies:
-                        self.playlist.append(str(f))
-                        self.track_list.addItem(f.name)
-            logger.info('track list loaded - %s', self.track_list)
-            if len(self.track_list) == 0:
-                QMessageBox.warning(self, 'no music!', 'no music found in this folder, try another one')
-                logger.info('folder has no music files, track list is empty - %s', self.track_list)
+                self.iter_folder(path) 
+                logger.info('track list loaded - %s', self.track_list)
+                if len(self.track_list) == 0:
+                    QMessageBox.warning(self, 'no music!', 'no music found in this folder, try another one')
+                    logger.info('folder has no music files, track list is empty - %s', self.track_list)
 
         except (FileNotFoundError, FileExistsError) as e:
             QMessageBox.warning(self, 'error', 'unable to open folder')
@@ -326,10 +329,10 @@ class AudioApp(QWidget):
 
     def meta_set(self):
         meta = self.media_player.metaData()
-        title = meta.value(QMediaMetaData.Key.Title)
-        author = meta.value(QMediaMetaData.Key.AlbumArtist)
-        logger.info('got title - %s, artist - %s', title, author)
-        self.meta_label.setText(f'song: {title}\nartist: {author}')
+        title = meta.stringValue(QMediaMetaData.Key.Title)
+        author = meta.stringValue(QMediaMetaData.Key.AlbumArtist)
+        logger.info('got meta data: title - %s, artist - %s', title, author)
+        self.meta_label.setText(f'song: {title if title else 'unknown'}\nartist: {author if author else 'unknown'}')
             
     def pause(self):
         self.media_player.pause()
@@ -409,9 +412,14 @@ class AudioApp(QWidget):
             id = self.track_list.currentRow()
             path = self.playlist[id]
             with shelve.open(file) as f:
-                f[name] = path
-                QMessageBox.information(self, 'yeah!', 'track added to "Favourites"')
-                logger.info('track added to shelve - %s, path - %s', name, path)
+                if not f.get(name):
+                    f[name] = path
+                    QMessageBox.information(self, 'yeah!', f'track {name} is added to "Favourites"')
+                    logger.info('track added to shelve - %s, path - %s', name, path)
+                else:
+                    QMessageBox.information(self, '', f'track {name} is already in "Favourites"')
+                    logger.info('track - %s user tries to add is already in shelve', name)
+
         else:
             QMessageBox.warning(self, 'wtf?', 'please, choose a track you want to add to "Favourites"')
             logger.warning('user hasn\'t chosen a track to add to favs')
@@ -422,10 +430,10 @@ class AudioApp(QWidget):
             with shelve.open(file) as f:
                 if f.get(name):
                     del f[name]
-                    QMessageBox.information(self, 'got it!', 'track removed from "Favourites"')
+                    QMessageBox.information(self, 'got it!', f'track {name} is removed from "Favourites"')
                     logger.info('track removed from shelve - %s', name)
                 else:
-                    QMessageBox.warning(self, 'track can\'t be removed', 'this track is missing in "Favourites"')
+                    QMessageBox.warning(self, 'error', 'this track is missing in "Favourites"\ntrack can\'t be removed')
                     logger.warning('user trying to delete track that is missing in favs')
 
         else:
@@ -442,6 +450,6 @@ if __name__ == '__main__':
         main.show()
         app.exec()
     except Exception:
-        logger.exception('some strange error')
+        logger.exception('some strange error', exc_info=True)
 
 

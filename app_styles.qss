@@ -1,4 +1,3 @@
-
 AudioApp {
     background-color: #282828;
     border:3px solid black;
@@ -86,4 +85,14 @@ QSlider::add-page:horizontal {
 
 QSlider::sub-page:horizontal {
     background-color: qlineargradient(spread:pad x1: 0, y1: 0, x2: 1, y2: 0 stop: 0 #126e52, stop: 1 #7d057f);
+}
+
+QMessageBox {
+    background-color: #2b2b2b;
+    color: #ffffff;
+    font-size: 13px;
+}
+QMessageBox QLabel {
+    color: #e0e0e0;
+    font-size: 13px;
 }
