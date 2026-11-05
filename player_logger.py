@@ -1,12 +1,14 @@
+import os
 import logging
 from functools import wraps
+from config import get_app_data_dir
 
 logger = logging.getLogger(__name__)
 logger.setLevel('DEBUG')
 
 formatter = logging.Formatter('%(levelname)s-%(name)s %(asctime)s: %(message)s', datefmt='%d-%m-%Y %H:%M:%S')
-
-file_handler = logging.FileHandler('player.log', mode='a', encoding='utf-8')
+file_path = os.path.join(get_app_data_dir(), "player.log")
+file_handler = logging.FileHandler(file_path, mode='a', encoding='utf-8')
 file_handler.setLevel('DEBUG')
 file_handler.setFormatter(formatter)
 

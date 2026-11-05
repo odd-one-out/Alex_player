@@ -2,4 +2,8 @@ favourite_hits
 player.log
 __pycache__/
 venv/
+build/
+dist/
+AudioPlayer.spec
+guitar.png
 

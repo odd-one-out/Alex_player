@@ -1,5 +1,5 @@
+import os
 from pathlib import Path
-from os.path import basename
 from datetime import timedelta
 
 from PyQt6.QtWidgets import (
@@ -22,12 +22,12 @@ from PyQt6.QtGui import QColor
 import qtawesome as qta
 
 import shelve
-file = 'favourite_hits'
 
+from config import get_app_data_dir, resource_path
 from player_logger import logger, logger_decor
 
+shelve_path = os.path.join(get_app_data_dir(), "favourites")
 
-# QWidget (and my class AudioApp) creates the main window where all other widgets work
 
 # custom slider used for volume slider
 class MouseSlider(QSlider):
@@ -40,7 +40,7 @@ class MouseSlider(QSlider):
             self.setValue(value)
         super().mousePressEvent(event)
 
-
+# QWidget (and my class AudioApp) creates the main window where all other widgets work
 # Main app class
 class AudioApp(QWidget):
 
@@ -206,7 +206,7 @@ class AudioApp(QWidget):
 
     def css_styles(self):
         try:
-            with open('app_styles.qss') as f:
+            with open(resource_path('app_styles.qss')) as f:
                 styles = f.read()
                 self.setStyleSheet(styles)
         except (FileExistsError, FileNotFoundError, PermissionError) as e:
@@ -248,7 +248,7 @@ class AudioApp(QWidget):
 
         self.media_player.mediaStatusChanged.connect(self.song_ended)
 
-
+    # search for music tracks in the folder and in the nested folders
     def iter_folder(self, path):
         suffixies = ('.mp3', '.wave', '.wav', '.m4a', '.aac', '.flac')
         for f in Path(path).iterdir():
@@ -284,16 +284,16 @@ class AudioApp(QWidget):
             self.playlist.clear()
             self.track_list.clear()
             self.playlist.append(file)
-            self.track_list.addItem(basename(file))
+            self.track_list.addItem(os.path.basename(file))
             self.media_player.setSource(QUrl.fromLocalFile(file))
             self.btn_play.setEnabled(True)
 
+    # load favourite tracks from shelve
     def load_favs(self):
         self.playlist.clear()
         self.track_list.clear()
-
         try:
-            with shelve.open(file) as f:
+            with shelve.open(shelve_path) as f:
                 for k, v in f.items():
                     self.playlist.append(v)
                     self.track_list.addItem(k)
@@ -406,12 +406,13 @@ class AudioApp(QWidget):
     def set_volume(self, volume):
         self.audio_output.setVolume(self.real_volume(volume))
 
+    # add a track to favourites (it will be kept in a shelve file)
     def add_fav(self):
         if self.track_list.currentItem():
             name = self.track_list.currentItem().text()
             id = self.track_list.currentRow()
             path = self.playlist[id]
-            with shelve.open(file) as f:
+            with shelve.open(shelve_path) as f:
                 if not f.get(name):
                     f[name] = path
                     QMessageBox.information(self, 'yeah!', f'track {name} is added to "Favourites"')
@@ -423,11 +424,12 @@ class AudioApp(QWidget):
         else:
             QMessageBox.warning(self, 'wtf?', 'please, choose a track you want to add to "Favourites"')
             logger.warning('user hasn\'t chosen a track to add to favs')
-            
+
+    # remove a trck from favourites (it will be deleted from shelve file)
     def remove_fav(self):
         if self.track_list.currentItem():
             name = self.track_list.currentItem().text()
-            with shelve.open(file) as f:
+            with shelve.open(shelve_path) as f:
                 if f.get(name):
                     del f[name]
                     QMessageBox.information(self, 'got it!', f'track {name} is removed from "Favourites"')
